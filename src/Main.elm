@@ -1,6 +1,6 @@
 module Main exposing (main)
 
-import Angle
+import Angle exposing (Angle)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
 import Camera3d exposing (Camera3d)
@@ -11,11 +11,11 @@ import Html exposing (Html)
 import Html.Attributes exposing (height, style, width)
 import Html.Events as HE
 import Json.Decode exposing (Value)
-import Length exposing (Meters)
+import Length exposing (Length, Meters)
 import Math.Matrix4 exposing (Mat4)
 import Math.Vector2 exposing (Vec2, vec2)
 import Math.Vector3 exposing (Vec3, vec3)
-import Point3d
+import Point3d exposing (Point3d)
 import Quantity
 import Task exposing (Task)
 import Viewpoint3d exposing (Viewpoint3d)
@@ -46,7 +46,37 @@ type alias RenderingModel =
     , size : ( Int, Int )
     , mesh : Mesh Vertex
     , currentTime : Float
+    , controls : Controls
     }
+
+
+type alias Controls =
+    { controlling : Controlling
+    , focalPoint : Point3d Meters ()
+    , azimuth : Angle
+    , elevation : Angle
+    , orbitDistance : Length
+    }
+
+
+type Controlling
+    = NoControl
+    | Orbiting
+    | Paning
+
+
+initialControls : ( Float, Float ) -> Controls
+initialControls ( targetX, targetY ) =
+    { controlling = NoControl
+    , focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
+    , azimuth = Angle.degrees 90
+    , elevation = Viewpoint3d.isometricElevation
+    , orbitDistance = Length.meters 3
+    }
+
+
+
+-- Update
 
 
 type Msg
@@ -93,6 +123,7 @@ update msg model =
                 , mesh = gridMesh w h
                 , size = ( w, h )
                 , currentTime = 0
+                , controls = initialControls (centerTarget ( w, h ))
                 }
             , Cmd.none
             )
@@ -120,7 +151,7 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering { depthMap, mesh, size, currentTime } ->
+        Rendering { depthMap, mesh, controls } ->
             WebGL.toHtml
                 [ width 800
                 , height 800
@@ -130,7 +161,7 @@ view model =
                     vertexShader
                     fragmentShader
                     mesh
-                    { modelViewProjection = modelViewProjection (centerTarget size) (currentTime / 100)
+                    { modelViewProjection = modelViewProjection controls
                     , directionalLight = vec3 0 0 -1
                     , texture = depthMap
                     }
@@ -150,32 +181,32 @@ centerTarget ( w, h ) =
     ( 0.5 * toFloat w / maxSize, 0.5 * toFloat h / maxSize )
 
 
-modelViewProjection : ( Float, Float ) -> Float -> Mat4
-modelViewProjection target t =
+modelViewProjection : Controls -> Mat4
+modelViewProjection controls =
     WebGL.Matrices.modelViewProjectionMatrix
         Frame3d.atOrigin
-        (camera target t)
+        (camera controls)
         { nearClipDepth = Length.meters 0.01
         , farClipDepth = Length.meters 100
         , aspectRatio = 1
         }
 
 
-camera : ( Float, Float ) -> Float -> Camera3d Meters coordinates
-camera target t =
+camera : Controls -> Camera3d Meters ()
+camera controls =
     Camera3d.perspective
-        { viewpoint = viewpoint target t
+        { viewpoint = viewpoint controls
         , verticalFieldOfView = Angle.degrees 30
         }
 
 
-viewpoint : ( Float, Float ) -> Float -> Viewpoint3d Meters coordinates
-viewpoint ( targetX, targetY ) t =
+viewpoint : Controls -> Viewpoint3d Meters ()
+viewpoint controls =
     Viewpoint3d.orbitZ
-        { focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
-        , azimuth = Angle.degrees t
-        , elevation = Viewpoint3d.isometricElevation
-        , distance = Length.meters 3
+        { focalPoint = controls.focalPoint
+        , azimuth = controls.azimuth
+        , elevation = controls.elevation
+        , distance = controls.orbitDistance
         }
 
 
