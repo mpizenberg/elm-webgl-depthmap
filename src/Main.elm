@@ -4,11 +4,12 @@ import Angle exposing (Angle)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
 import Camera3d exposing (Camera3d)
+import Direction3d exposing (Direction3d)
 import File exposing (File)
 import File.Select
 import Frame3d
 import Html exposing (Html)
-import Html.Attributes exposing (height, style, width)
+import Html.Attributes as HA exposing (height, style, width)
 import Html.Events as HE
 import Html.Events.Extra.Mouse as Mouse
 import Html.Events.Extra.Wheel as Wheel
@@ -50,6 +51,22 @@ type alias RenderingModel =
     , mesh : Mesh Vertex
     , currentTime : Float
     , controls : Controls
+    , lighting : Lighting
+    }
+
+
+type alias Lighting =
+    { intensity : Float
+    , azimuth : Angle
+    , elevation : Angle
+    }
+
+
+initialLighting : Lighting
+initialLighting =
+    { intensity = 1
+    , azimuth = Quantity.zero
+    , elevation = Angle.degrees 90
     }
 
 
@@ -119,6 +136,10 @@ type Msg
     | MouseDown Mouse.Event
     | MouseMove ( Float, Float )
     | MouseUp
+      -- Lighting
+    | ChangeLightIntensity Float
+    | ChangeLightAzimuth Float
+    | ChangeLightElevation Float
 
 
 loadTexture : String -> Task Texture.Error Texture
@@ -158,6 +179,7 @@ update msg model =
                 , size = ( w, h )
                 , currentTime = 0
                 , controls = initialControls (centerTarget ( w, h ))
+                , lighting = initialLighting
                 }
             , Cmd.none
             )
@@ -183,8 +205,22 @@ update msg model =
         ( MouseMove movement, Rendering r ) ->
             ( Rendering { r | controls = controlMouseMove movement r.controls }, Cmd.none )
 
+        -- Lighting
+        ( ChangeLightIntensity intensity, Rendering r ) ->
+            ( Rendering { r | lighting = changeLightIntensity intensity r.lighting }, Cmd.none )
+
+        ( ChangeLightAzimuth az, Rendering r ) ->
+            ( Rendering { r | lighting = changeLightAzimuth az r.lighting }, Cmd.none )
+
+        ( ChangeLightElevation el, Rendering r ) ->
+            ( Rendering { r | lighting = changeLightElevation el r.lighting }, Cmd.none )
+
         _ ->
             ( model, Cmd.none )
+
+
+
+-- Controls
 
 
 controlZoomIn : Controls -> Controls
@@ -270,6 +306,25 @@ pan dx dy controls =
 
 
 
+-- Lighting
+
+
+changeLightIntensity : Float -> Lighting -> Lighting
+changeLightIntensity value lighting =
+    { lighting | intensity = value }
+
+
+changeLightAzimuth : Float -> Lighting -> Lighting
+changeLightAzimuth value lighting =
+    { lighting | azimuth = Angle.degrees value }
+
+
+changeLightElevation : Float -> Lighting -> Lighting
+changeLightElevation value lighting =
+    { lighting | elevation = Angle.degrees value }
+
+
+
 -- View
 
 
@@ -277,9 +332,11 @@ view : Model -> Html Msg
 view model =
     case model of
         Landing ->
-            Html.button
-                [ HE.onClick ClickedSelectImageButton ]
-                [ Html.text "Select a PNG image containing normals and depth" ]
+            Html.div []
+                [ Html.button
+                    [ HE.onClick ClickedSelectImageButton ]
+                    [ Html.text "Select a PNG image containing normals and depth" ]
+                ]
 
         LoadingTexture ->
             Html.text "Loading texture ..."
@@ -287,23 +344,88 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering { depthMap, mesh, controls } ->
-            WebGL.toHtml
-                [ width 800
-                , height 800
-                , style "display" "block"
-                , Wheel.onWheel chooseZoom
-                , Mouse.onDown MouseDown
+        Rendering { depthMap, mesh, controls, lighting } ->
+            Html.div []
+                [ lightControls lighting
+                , WebGL.toHtml
+                    [ width 800
+                    , height 800
+                    , style "display" "block"
+                    , Wheel.onWheel chooseZoom
+                    , Mouse.onDown MouseDown
+                    ]
+                    [ WebGL.entity
+                        vertexShader
+                        fragmentShader
+                        mesh
+                        { modelViewProjection = modelViewProjection controls
+                        , directionalLight = directionalLight lighting
+                        , texture = depthMap
+                        }
+                    ]
                 ]
-                [ WebGL.entity
-                    vertexShader
-                    fragmentShader
-                    mesh
-                    { modelViewProjection = modelViewProjection controls
-                    , directionalLight = vec3 0 0 -1
-                    , texture = depthMap
-                    }
+
+
+directionalLight : Lighting -> Vec3
+directionalLight { intensity, azimuth, elevation } =
+    Direction3d.xyZ azimuth elevation
+        |> Direction3d.components
+        |> (\( x, y, z ) -> vec3 (intensity * x) (intensity * y) (intensity * z))
+
+
+lightControls : Lighting -> Html Msg
+lightControls lighting =
+    Html.div []
+        [ Html.p [] [ Html.text "Light intensity" ]
+        , Html.div []
+            [ Html.text "0"
+            , Html.input
+                [ HA.type_ "range"
+                , HA.min "0"
+                , HA.max "1"
+                , HA.step "0.01"
+                , HA.value (String.fromFloat lighting.intensity)
+                , HE.stopPropagationOn "input" (valueDecoder ChangeLightIntensity)
                 ]
+                []
+            , Html.text "1"
+            ]
+        , Html.p [] [ Html.text "Light direction" ]
+        , Html.div []
+            [ Html.text "Azimuth: 0"
+            , Html.input
+                [ HA.type_ "range"
+                , HA.min "0"
+                , HA.max "360"
+                , HA.step "1"
+                , HA.value (String.fromInt <| round <| Angle.inDegrees lighting.azimuth)
+                , HE.stopPropagationOn "input" (valueDecoder ChangeLightAzimuth)
+                ]
+                []
+            , Html.text "360 degrees"
+            ]
+        , Html.div []
+            [ Html.text "Elevation: 0"
+            , Html.input
+                [ HA.type_ "range"
+                , HA.min "0"
+                , HA.max "90"
+                , HA.step "1"
+                , HA.value (String.fromInt <| round <| Angle.inDegrees lighting.elevation)
+                , HE.stopPropagationOn "input" (valueDecoder ChangeLightElevation)
+                ]
+                []
+            , Html.text "90 degrees"
+            ]
+        ]
+
+
+valueDecoder : (Float -> Msg) -> Decoder ( Msg, Bool )
+valueDecoder toMsg =
+    Decode.at [ "target", "value" ] Decode.string
+        |> Decode.map (String.toFloat >> Maybe.withDefault 0)
+        |> Decode.map toMsg
+        |> Decode.map (\x -> ( x, True ))
 
 
 chooseZoom : Wheel.Event -> Msg
@@ -485,7 +607,7 @@ vertexShader =
 
         void main () {
             vec4 tex = texture2D(texture, mapCoordinates);
-            vnormal = tex.xyz;
+            vnormal = normalize(2.0 * tex.xyz - 1.0);
             vcolor = vec3(tex.w);
             gl_Position = modelViewProjection * vec4(position, tex.w / -10.0, 1.0);
         }
@@ -507,7 +629,7 @@ fragmentShader =
             vec3 normal = normalize(vnormal);
 
             // computing directional lighting
-            float intensity = - dot(normal, directionalLight);
+            float intensity = dot(normal, directionalLight);
 
             // gl_FragColor = vec4(vcolor, 1.0);
             gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
