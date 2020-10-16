@@ -38,7 +38,15 @@ type Model
     = Landing
     | LoadingTexture
     | ErrorLoadingTexture Texture.Error
-    | Rendering Texture (Mesh Vertex) ( Int, Int ) Float
+    | Rendering RenderingModel
+
+
+type alias RenderingModel =
+    { depthMap : Texture
+    , size : ( Int, Int )
+    , mesh : Mesh Vertex
+    , currentTime : Float
+    }
 
 
 type Msg
@@ -80,10 +88,19 @@ update msg model =
                 ( w, h ) =
                     Texture.size texture
             in
-            ( Rendering texture (gridMesh w h) ( w, h ) 0, Cmd.none )
+            ( Rendering
+                { depthMap = texture
+                , mesh = gridMesh w h
+                , size = ( w, h )
+                , currentTime = 0
+                }
+            , Cmd.none
+            )
 
-        ( AnimationFrame elapsed, Rendering texture mesh size currentTime ) ->
-            ( Rendering texture mesh size (currentTime + elapsed), Cmd.none )
+        ( AnimationFrame elapsed, Rendering r ) ->
+            ( Rendering { r | currentTime = r.currentTime + elapsed }
+            , Cmd.none
+            )
 
         _ ->
             ( model, Cmd.none )
@@ -103,7 +120,7 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering texture mesh ( w, h ) currentTime ->
+        Rendering { depthMap, mesh, size, currentTime } ->
             WebGL.toHtml
                 [ width 800
                 , height 800
@@ -113,9 +130,9 @@ view model =
                     vertexShader
                     fragmentShader
                     mesh
-                    { modelViewProjection = modelViewProjection (centerTarget w h) (currentTime / 100)
+                    { modelViewProjection = modelViewProjection (centerTarget size) (currentTime / 100)
                     , directionalLight = vec3 0 0 -1
-                    , texture = texture
+                    , texture = depthMap
                     }
                 ]
 
@@ -124,8 +141,8 @@ view model =
 -- Camera
 
 
-centerTarget : Int -> Int -> ( Float, Float )
-centerTarget w h =
+centerTarget : ( Int, Int ) -> ( Float, Float )
+centerTarget ( w, h ) =
     let
         maxSize =
             toFloat (max w h)
