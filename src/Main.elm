@@ -202,10 +202,10 @@ controlMouseDown event controls =
     let
         controlling =
             if event.keys.ctrl then
-                Orbiting
+                Panning
 
             else
-                Panning
+                Orbiting
     in
     { controls | controlling = controlling }
 
