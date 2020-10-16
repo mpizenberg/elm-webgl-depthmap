@@ -10,8 +10,9 @@ import Frame3d
 import Html exposing (Html)
 import Html.Attributes exposing (height, style, width)
 import Html.Events as HE
+import Html.Events.Extra.Mouse as Mouse
 import Html.Events.Extra.Wheel as Wheel
-import Json.Decode exposing (Value)
+import Json.Decode as Decode exposing (Decoder, Value)
 import Length exposing (Length, Meters)
 import Math.Matrix4 exposing (Mat4)
 import Math.Vector2 exposing (Vec2, vec2)
@@ -19,6 +20,7 @@ import Math.Vector3 exposing (Vec3, vec3)
 import Point3d exposing (Point3d)
 import Quantity
 import Task exposing (Task)
+import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
 import WebGL exposing (Mesh, Shader)
 import WebGL.Matrices
@@ -30,7 +32,7 @@ main =
     Browser.element
         { init = \_ -> ( Landing, Cmd.none )
         , view = view
-        , subscriptions = \_ -> onAnimationFrameDelta AnimationFrame
+        , subscriptions = subscriptions
         , update = update
         }
 
@@ -60,20 +62,10 @@ type alias Controls =
     }
 
 
-controlZoomIn : Controls -> Controls
-controlZoomIn controls =
-    { controls | orbitDistance = Quantity.multiplyBy (21 / 29.7) controls.orbitDistance }
-
-
-controlZoomOut : Controls -> Controls
-controlZoomOut controls =
-    { controls | orbitDistance = Quantity.multiplyBy (29.7 / 21) controls.orbitDistance }
-
-
 type Controlling
     = NoControl
     | Orbiting
-    | Paning
+    | Panning
 
 
 initialControls : ( Float, Float ) -> Controls
@@ -90,6 +82,31 @@ initialControls ( targetX, targetY ) =
 -- Update
 
 
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    case model of
+        Rendering r ->
+            case r.controls.controlling of
+                NoControl ->
+                    onAnimationFrameDelta AnimationFrame
+
+                _ ->
+                    Sub.batch
+                        [ Browser.Events.onMouseMove (Decode.map MouseMove movementDecoder)
+                        , Browser.Events.onMouseUp (Decode.succeed MouseUp)
+                        ]
+
+        _ ->
+            Sub.none
+
+
+movementDecoder : Decoder ( Float, Float )
+movementDecoder =
+    Decode.map2 (\a b -> ( a, b ))
+        (Decode.field "movementX" Decode.float)
+        (Decode.field "movementY" Decode.float)
+
+
 type Msg
     = AnimationFrame Float
     | ImageLoaded File
@@ -99,6 +116,9 @@ type Msg
       -- Controls
     | ZoomIn
     | ZoomOut
+    | MouseDown Mouse.Event
+    | MouseMove ( Float, Float )
+    | MouseUp
 
 
 loadTexture : String -> Task Texture.Error Texture
@@ -154,8 +174,103 @@ update msg model =
         ( ZoomOut, Rendering r ) ->
             ( Rendering { r | controls = controlZoomOut r.controls }, Cmd.none )
 
+        ( MouseDown event, Rendering r ) ->
+            ( Rendering { r | controls = controlMouseDown event r.controls }, Cmd.none )
+
+        ( MouseUp, Rendering r ) ->
+            ( Rendering { r | controls = controlMouseUp r.controls }, Cmd.none )
+
+        ( MouseMove movement, Rendering r ) ->
+            ( Rendering { r | controls = controlMouseMove movement r.controls }, Cmd.none )
+
         _ ->
             ( model, Cmd.none )
+
+
+controlZoomIn : Controls -> Controls
+controlZoomIn controls =
+    { controls | orbitDistance = Quantity.multiplyBy (21 / 29.7) controls.orbitDistance }
+
+
+controlZoomOut : Controls -> Controls
+controlZoomOut controls =
+    { controls | orbitDistance = Quantity.multiplyBy (29.7 / 21) controls.orbitDistance }
+
+
+controlMouseDown : Mouse.Event -> Controls -> Controls
+controlMouseDown event controls =
+    let
+        controlling =
+            if event.keys.ctrl then
+                Orbiting
+
+            else
+                Panning
+    in
+    { controls | controlling = controlling }
+
+
+controlMouseUp : Controls -> Controls
+controlMouseUp controls =
+    { controls | controlling = NoControl }
+
+
+controlMouseMove : ( Float, Float ) -> Controls -> Controls
+controlMouseMove ( dx, dy ) controls =
+    case controls.controlling of
+        NoControl ->
+            controls
+
+        Orbiting ->
+            orbit dx dy controls
+
+        Panning ->
+            pan dx dy controls
+
+
+orbit : Float -> Float -> Controls -> Controls
+orbit dx dy controls =
+    let
+        minElevation =
+            Angle.degrees -90
+
+        maxElevation =
+            Angle.degrees 90
+    in
+    { controlling = controls.controlling
+    , focalPoint = controls.focalPoint
+    , azimuth = Quantity.plus (Angle.degrees -dx) controls.azimuth
+    , elevation = Quantity.clamp minElevation maxElevation (Quantity.plus (Angle.degrees dy) controls.elevation)
+    , orbitDistance = controls.orbitDistance
+    }
+
+
+pan : Float -> Float -> Controls -> Controls
+pan dx dy controls =
+    let
+        viewPoint =
+            Viewpoint3d.orbitZ
+                { focalPoint = controls.focalPoint
+                , azimuth = controls.azimuth
+                , elevation = controls.elevation
+                , distance = controls.orbitDistance
+                }
+
+        displacement =
+            Vector3d.xyOn (Viewpoint3d.viewPlane viewPoint)
+                (Quantity.multiplyBy (-0.001 * dx) controls.orbitDistance)
+                (Quantity.multiplyBy (0.001 * dy) controls.orbitDistance)
+    in
+    { controlling = controls.controlling
+    , focalPoint = Point3d.translateBy displacement controls.focalPoint
+    , azimuth = controls.azimuth
+    , elevation = controls.elevation
+    , orbitDistance = controls.orbitDistance
+    }
+
+
+
+-- View
 
 
 view : Model -> Html Msg
@@ -178,6 +293,7 @@ view model =
                 , height 800
                 , style "display" "block"
                 , Wheel.onWheel chooseZoom
+                , Mouse.onDown MouseDown
                 ]
                 [ WebGL.entity
                     vertexShader
