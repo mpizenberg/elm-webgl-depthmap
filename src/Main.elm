@@ -4,7 +4,7 @@ import Angle exposing (Angle)
 import Browser
 import Browser.Events exposing (onAnimationFrameDelta)
 import Camera3d exposing (Camera3d)
-import Direction3d exposing (Direction3d)
+import Direction3d
 import File exposing (File)
 import File.Select
 import Frame3d
@@ -89,7 +89,7 @@ initialCamera : ( Float, Float ) -> Camera
 initialCamera ( targetX, targetY ) =
     { controlling = NoControl
     , focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
-    , azimuth = Angle.degrees 90
+    , azimuth = Angle.degrees -90
     , elevation = Viewpoint3d.isometricElevation
     , orbitDistance = Length.meters 3
     }
@@ -149,7 +149,7 @@ loadTexture =
         , minify = Texture.nearest
         , horizontalWrap = Texture.clampToEdge
         , verticalWrap = Texture.clampToEdge
-        , flipY = False
+        , flipY = True
         }
 
 
@@ -268,7 +268,7 @@ orbit : Float -> Float -> Camera -> Camera
 orbit dx dy camera =
     let
         minElevation =
-            Angle.degrees -90
+            Angle.degrees 0
 
         maxElevation =
             Angle.degrees 90
@@ -608,7 +608,7 @@ vertexShader =
         void main () {
             vec4 tex = texture2D(texture, mapCoordinates);
             vnormal = normalize(2.0 * tex.xyz - 1.0);
-            vcolor = vec3(tex.w);
+            vcolor = vec3(position, 0);
             gl_Position = modelViewProjection * vec4(position, tex.w / -10.0, 1.0);
         }
 
@@ -632,7 +632,8 @@ fragmentShader =
             float intensity = dot(normal, directionalLight);
 
             // gl_FragColor = vec4(vcolor, 1.0);
-            gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
+            // gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
+            gl_FragColor = vec4(intensity * vcolor, 1.0);
         }
 
     |]
