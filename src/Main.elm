@@ -10,6 +10,7 @@ import Frame3d
 import Html exposing (Html)
 import Html.Attributes exposing (height, style, width)
 import Html.Events as HE
+import Html.Events.Extra.Wheel as Wheel
 import Json.Decode exposing (Value)
 import Length exposing (Length, Meters)
 import Math.Matrix4 exposing (Mat4)
@@ -59,6 +60,16 @@ type alias Controls =
     }
 
 
+controlZoomIn : Controls -> Controls
+controlZoomIn controls =
+    { controls | orbitDistance = Quantity.multiplyBy (21 / 29.7) controls.orbitDistance }
+
+
+controlZoomOut : Controls -> Controls
+controlZoomOut controls =
+    { controls | orbitDistance = Quantity.multiplyBy (29.7 / 21) controls.orbitDistance }
+
+
 type Controlling
     = NoControl
     | Orbiting
@@ -85,6 +96,9 @@ type Msg
     | UrlGenerated String
     | TextureLoaded (Result Texture.Error Texture)
     | ClickedSelectImageButton
+      -- Controls
+    | ZoomIn
+    | ZoomOut
 
 
 loadTexture : String -> Task Texture.Error Texture
@@ -133,6 +147,13 @@ update msg model =
             , Cmd.none
             )
 
+        -- Controls
+        ( ZoomIn, Rendering r ) ->
+            ( Rendering { r | controls = controlZoomIn r.controls }, Cmd.none )
+
+        ( ZoomOut, Rendering r ) ->
+            ( Rendering { r | controls = controlZoomOut r.controls }, Cmd.none )
+
         _ ->
             ( model, Cmd.none )
 
@@ -156,6 +177,7 @@ view model =
                 [ width 800
                 , height 800
                 , style "display" "block"
+                , Wheel.onWheel chooseZoom
                 ]
                 [ WebGL.entity
                     vertexShader
@@ -166,6 +188,15 @@ view model =
                     , texture = depthMap
                     }
                 ]
+
+
+chooseZoom : Wheel.Event -> Msg
+chooseZoom wheelEvent =
+    if wheelEvent.deltaY > 0 then
+        ZoomOut
+
+    else
+        ZoomIn
 
 
 

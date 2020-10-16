@@ -15,7 +15,8 @@
             "elm-explorations/webgl": "1.1.2",
             "ianmackenzie/elm-3d-camera": "3.1.0",
             "ianmackenzie/elm-geometry": "3.6.0",
-            "ianmackenzie/elm-units": "2.7.0"
+            "ianmackenzie/elm-units": "2.7.0",
+            "mpizenberg/elm-pointer-events": "4.0.2"
         },
         "indirect": {
             "elm/bytes": "1.0.8",
