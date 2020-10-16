@@ -607,7 +607,10 @@ vertexShader =
 
         void main () {
             vec4 tex = texture2D(texture, mapCoordinates);
-            vnormal = normalize(2.0 * tex.xyz - 1.0);
+            float nx = 2.0 * tex.x - 1.0;
+            float ny = 2.0 * tex.y - 1.0;
+            float nz = 2.0 * tex.z - 1.0;
+            vnormal = vec3(nx, ny, nz);
             vcolor = vec3(position, 0);
             gl_Position = modelViewProjection * vec4(position, tex.w / -10.0, 1.0);
         }
