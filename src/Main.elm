@@ -50,7 +50,7 @@ type alias RenderingModel =
     , size : ( Int, Int )
     , mesh : Mesh Vertex
     , currentTime : Float
-    , controls : Controls
+    , camera : Camera
     , lighting : Lighting
     }
 
@@ -70,7 +70,7 @@ initialLighting =
     }
 
 
-type alias Controls =
+type alias Camera =
     { controlling : Controlling
     , focalPoint : Point3d Meters ()
     , azimuth : Angle
@@ -85,8 +85,8 @@ type Controlling
     | Panning
 
 
-initialControls : ( Float, Float ) -> Controls
-initialControls ( targetX, targetY ) =
+initialCamera : ( Float, Float ) -> Camera
+initialCamera ( targetX, targetY ) =
     { controlling = NoControl
     , focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
     , azimuth = Angle.degrees 90
@@ -103,7 +103,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     case model of
         Rendering r ->
-            case r.controls.controlling of
+            case r.camera.controlling of
                 NoControl ->
                     onAnimationFrameDelta AnimationFrame
 
@@ -130,7 +130,7 @@ type Msg
     | UrlGenerated String
     | TextureLoaded (Result Texture.Error Texture)
     | ClickedSelectImageButton
-      -- Controls
+      -- Camera
     | ZoomIn
     | ZoomOut
     | MouseDown Mouse.Event
@@ -178,7 +178,7 @@ update msg model =
                 , mesh = gridMesh w h
                 , size = ( w, h )
                 , currentTime = 0
-                , controls = initialControls (centerTarget ( w, h ))
+                , camera = initialCamera (centerTarget ( w, h ))
                 , lighting = initialLighting
                 }
             , Cmd.none
@@ -189,21 +189,21 @@ update msg model =
             , Cmd.none
             )
 
-        -- Controls
+        -- Camera
         ( ZoomIn, Rendering r ) ->
-            ( Rendering { r | controls = controlZoomIn r.controls }, Cmd.none )
+            ( Rendering { r | camera = controlZoomIn r.camera }, Cmd.none )
 
         ( ZoomOut, Rendering r ) ->
-            ( Rendering { r | controls = controlZoomOut r.controls }, Cmd.none )
+            ( Rendering { r | camera = controlZoomOut r.camera }, Cmd.none )
 
         ( MouseDown event, Rendering r ) ->
-            ( Rendering { r | controls = controlMouseDown event r.controls }, Cmd.none )
+            ( Rendering { r | camera = controlMouseDown event r.camera }, Cmd.none )
 
         ( MouseUp, Rendering r ) ->
-            ( Rendering { r | controls = controlMouseUp r.controls }, Cmd.none )
+            ( Rendering { r | camera = controlMouseUp r.camera }, Cmd.none )
 
         ( MouseMove movement, Rendering r ) ->
-            ( Rendering { r | controls = controlMouseMove movement r.controls }, Cmd.none )
+            ( Rendering { r | camera = controlMouseMove movement r.camera }, Cmd.none )
 
         -- Lighting
         ( ChangeLightIntensity intensity, Rendering r ) ->
@@ -220,21 +220,21 @@ update msg model =
 
 
 
--- Controls
+-- Camera
 
 
-controlZoomIn : Controls -> Controls
-controlZoomIn controls =
-    { controls | orbitDistance = Quantity.multiplyBy (21 / 29.7) controls.orbitDistance }
+controlZoomIn : Camera -> Camera
+controlZoomIn camera =
+    { camera | orbitDistance = Quantity.multiplyBy (21 / 29.7) camera.orbitDistance }
 
 
-controlZoomOut : Controls -> Controls
-controlZoomOut controls =
-    { controls | orbitDistance = Quantity.multiplyBy (29.7 / 21) controls.orbitDistance }
+controlZoomOut : Camera -> Camera
+controlZoomOut camera =
+    { camera | orbitDistance = Quantity.multiplyBy (29.7 / 21) camera.orbitDistance }
 
 
-controlMouseDown : Mouse.Event -> Controls -> Controls
-controlMouseDown event controls =
+controlMouseDown : Mouse.Event -> Camera -> Camera
+controlMouseDown event camera =
     let
         controlling =
             if event.keys.ctrl then
@@ -243,29 +243,29 @@ controlMouseDown event controls =
             else
                 Orbiting
     in
-    { controls | controlling = controlling }
+    { camera | controlling = controlling }
 
 
-controlMouseUp : Controls -> Controls
-controlMouseUp controls =
-    { controls | controlling = NoControl }
+controlMouseUp : Camera -> Camera
+controlMouseUp camera =
+    { camera | controlling = NoControl }
 
 
-controlMouseMove : ( Float, Float ) -> Controls -> Controls
-controlMouseMove ( dx, dy ) controls =
-    case controls.controlling of
+controlMouseMove : ( Float, Float ) -> Camera -> Camera
+controlMouseMove ( dx, dy ) camera =
+    case camera.controlling of
         NoControl ->
-            controls
+            camera
 
         Orbiting ->
-            orbit dx dy controls
+            orbit dx dy camera
 
         Panning ->
-            pan dx dy controls
+            pan dx dy camera
 
 
-orbit : Float -> Float -> Controls -> Controls
-orbit dx dy controls =
+orbit : Float -> Float -> Camera -> Camera
+orbit dx dy camera =
     let
         minElevation =
             Angle.degrees -90
@@ -273,35 +273,35 @@ orbit dx dy controls =
         maxElevation =
             Angle.degrees 90
     in
-    { controlling = controls.controlling
-    , focalPoint = controls.focalPoint
-    , azimuth = Quantity.plus (Angle.degrees -dx) controls.azimuth
-    , elevation = Quantity.clamp minElevation maxElevation (Quantity.plus (Angle.degrees dy) controls.elevation)
-    , orbitDistance = controls.orbitDistance
+    { controlling = camera.controlling
+    , focalPoint = camera.focalPoint
+    , azimuth = Quantity.plus (Angle.degrees -dx) camera.azimuth
+    , elevation = Quantity.clamp minElevation maxElevation (Quantity.plus (Angle.degrees dy) camera.elevation)
+    , orbitDistance = camera.orbitDistance
     }
 
 
-pan : Float -> Float -> Controls -> Controls
-pan dx dy controls =
+pan : Float -> Float -> Camera -> Camera
+pan dx dy camera =
     let
         viewPoint =
             Viewpoint3d.orbitZ
-                { focalPoint = controls.focalPoint
-                , azimuth = controls.azimuth
-                , elevation = controls.elevation
-                , distance = controls.orbitDistance
+                { focalPoint = camera.focalPoint
+                , azimuth = camera.azimuth
+                , elevation = camera.elevation
+                , distance = camera.orbitDistance
                 }
 
         displacement =
             Vector3d.xyOn (Viewpoint3d.viewPlane viewPoint)
-                (Quantity.multiplyBy (-0.001 * dx) controls.orbitDistance)
-                (Quantity.multiplyBy (0.001 * dy) controls.orbitDistance)
+                (Quantity.multiplyBy (-0.001 * dx) camera.orbitDistance)
+                (Quantity.multiplyBy (0.001 * dy) camera.orbitDistance)
     in
-    { controlling = controls.controlling
-    , focalPoint = Point3d.translateBy displacement controls.focalPoint
-    , azimuth = controls.azimuth
-    , elevation = controls.elevation
-    , orbitDistance = controls.orbitDistance
+    { controlling = camera.controlling
+    , focalPoint = Point3d.translateBy displacement camera.focalPoint
+    , azimuth = camera.azimuth
+    , elevation = camera.elevation
+    , orbitDistance = camera.orbitDistance
     }
 
 
@@ -344,7 +344,7 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering { depthMap, mesh, controls, lighting } ->
+        Rendering { depthMap, mesh, camera, lighting } ->
             Html.div []
                 [ lightControls lighting
                 , WebGL.toHtml
@@ -358,7 +358,7 @@ view model =
                         vertexShader
                         fragmentShader
                         mesh
-                        { modelViewProjection = modelViewProjection controls
+                        { modelViewProjection = modelViewProjection camera
                         , directionalLight = directionalLight lighting
                         , texture = depthMap
                         }
@@ -450,32 +450,32 @@ centerTarget ( w, h ) =
     ( 0.5 * toFloat w / maxSize, 0.5 * toFloat h / maxSize )
 
 
-modelViewProjection : Controls -> Mat4
-modelViewProjection controls =
+modelViewProjection : Camera -> Mat4
+modelViewProjection camera =
     WebGL.Matrices.modelViewProjectionMatrix
         Frame3d.atOrigin
-        (camera controls)
+        (persectiveCamera camera)
         { nearClipDepth = Length.meters 0.01
         , farClipDepth = Length.meters 100
         , aspectRatio = 1
         }
 
 
-camera : Controls -> Camera3d Meters ()
-camera controls =
+persectiveCamera : Camera -> Camera3d Meters ()
+persectiveCamera camera =
     Camera3d.perspective
-        { viewpoint = viewpoint controls
+        { viewpoint = viewpoint camera
         , verticalFieldOfView = Angle.degrees 30
         }
 
 
-viewpoint : Controls -> Viewpoint3d Meters ()
-viewpoint controls =
+viewpoint : Camera -> Viewpoint3d Meters ()
+viewpoint camera =
     Viewpoint3d.orbitZ
-        { focalPoint = controls.focalPoint
-        , azimuth = controls.azimuth
-        , elevation = controls.elevation
-        , distance = controls.orbitDistance
+        { focalPoint = camera.focalPoint
+        , azimuth = camera.azimuth
+        , elevation = camera.elevation
+        , distance = camera.orbitDistance
         }
 
 
