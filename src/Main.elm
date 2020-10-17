@@ -69,7 +69,7 @@ initialLighting =
 
 
 type alias OrbitCamera =
-    { controlling : Controlling
+    { controlling : CameraControl
     , focalPoint : Point3d Meters ()
     , azimuth : Angle
     , elevation : Angle
@@ -77,7 +77,7 @@ type alias OrbitCamera =
     }
 
 
-type Controlling
+type CameraControl
     = NoControl
     | Orbiting
     | Panning
