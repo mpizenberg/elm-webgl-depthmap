@@ -87,8 +87,8 @@ initialOrbitCamera : ( Float, Float ) -> OrbitCamera
 initialOrbitCamera ( targetX, targetY ) =
     { focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
     , azimuth = Angle.degrees -90
-    , elevation = Viewpoint3d.isometricElevation
-    , distance = Length.meters 3
+    , elevation = Angle.degrees 60
+    , distance = Length.meters 2
     }
 
 
