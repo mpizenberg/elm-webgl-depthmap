@@ -53,6 +53,7 @@ type alias RenderingModel =
     , controlling : CameraControl
     , camera : OrbitCamera
     , lighting : Lighting
+    , depthScale : Float
     }
 
 
@@ -136,6 +137,8 @@ type Msg
       -- Lighting
     | ChangeLightAzimuth Float
     | ChangeLightElevation Float
+      -- Depth scale
+    | ChangeDepthScale Float
 
 
 loadTexture : String -> Task Texture.Error Texture
@@ -177,6 +180,7 @@ update msg model =
                 , controlling = NoControl
                 , camera = initialOrbitCamera (centerTarget ( w, h ))
                 , lighting = initialLighting
+                , depthScale = 0.1
                 }
             , Cmd.none
             )
@@ -208,6 +212,10 @@ update msg model =
 
         ( ChangeLightElevation el, Rendering r ) ->
             ( Rendering { r | lighting = changeLightElevation el r.lighting }, Cmd.none )
+
+        -- Depth scale
+        ( ChangeDepthScale scale, Rendering r ) ->
+            ( Rendering { r | depthScale = scale }, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
@@ -326,7 +334,7 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering { depthMap, mesh, camera, lighting } ->
+        Rendering { depthMap, mesh, camera, lighting, depthScale } ->
             Html.div []
                 [ Html.button
                     [ HE.onClick ClickedSelectImageButton ]
@@ -346,6 +354,7 @@ view model =
                         { modelViewProjection = modelViewProjection camera
                         , directionalLight = directionalLight lighting
                         , texture = depthMap
+                        , scale = depthScale
                         }
                     ]
                 ]
@@ -361,7 +370,17 @@ directionalLight { azimuth, elevation } =
 lightControls : Lighting -> Html Msg
 lightControls lighting =
     Html.div []
-        [ Html.p [] [ Html.text "Light direction" ]
+        [ Html.text "Depth scale"
+        , Html.input
+            [ HA.type_ "number"
+            , HA.min "0.01"
+            , HA.max "1.00"
+            , HA.step "0.01"
+            , HA.placeholder "0.1"
+            , HE.stopPropagationOn "change" (valueDecoder ChangeDepthScale)
+            ]
+            []
+        , Html.p [] [ Html.text "Light direction" ]
         , Html.div []
             [ Html.text "Azimuth: 0"
             , Html.input
@@ -393,7 +412,7 @@ lightControls lighting =
 
 valueDecoder : (Float -> Msg) -> Decoder ( Msg, Bool )
 valueDecoder toMsg =
-    Decode.at [ "target", "value" ] Decode.string
+    HE.targetValue
         |> Decode.map (String.toFloat >> Maybe.withDefault 0)
         |> Decode.map toMsg
         |> Decode.map (\x -> ( x, True ))
@@ -552,6 +571,7 @@ type alias Uniforms =
     { modelViewProjection : Mat4
     , directionalLight : Vec3
     , texture : Texture
+    , scale : Float
     }
 
 
@@ -563,6 +583,7 @@ vertexShader =
         attribute vec2 position;
         uniform mat4 modelViewProjection;
         uniform sampler2D texture;
+        uniform float scale;
         varying vec3 vcolor;
         varying vec3 vnormal;
 
@@ -573,7 +594,7 @@ vertexShader =
             float nz = 2.0 * tex.z - 1.0;
             vnormal = vec3(nx, ny, nz);
             vcolor = vec3(position, 0);
-            gl_Position = modelViewProjection * vec4(position, tex.w / -10.0, 1.0);
+            gl_Position = modelViewProjection * vec4(position, -tex.w * scale, 1.0);
         }
 
     |]
