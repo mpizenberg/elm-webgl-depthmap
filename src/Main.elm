@@ -22,7 +22,7 @@ import Point3d exposing (Point3d)
 import Quantity
 import Task exposing (Task)
 import Vector3d
-import Viewpoint3d exposing (Viewpoint3d)
+import Viewpoint3d
 import WebGL exposing (Mesh, Shader)
 import WebGL.Matrices
 import WebGL.Texture as Texture exposing (Texture)
@@ -73,7 +73,7 @@ type alias OrbitCamera =
     { focalPoint : Point3d Meters ()
     , azimuth : Angle
     , elevation : Angle
-    , orbitDistance : Length
+    , distance : Length
     }
 
 
@@ -88,7 +88,7 @@ initialOrbitCamera ( targetX, targetY ) =
     { focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
     , azimuth = Angle.degrees -90
     , elevation = Viewpoint3d.isometricElevation
-    , orbitDistance = Length.meters 3
+    , distance = Length.meters 3
     }
 
 
@@ -219,12 +219,12 @@ update msg model =
 
 controlZoomIn : OrbitCamera -> OrbitCamera
 controlZoomIn camera =
-    { camera | orbitDistance = Quantity.multiplyBy (21 / 29.7) camera.orbitDistance }
+    { camera | distance = Quantity.multiplyBy (21 / 29.7) camera.distance }
 
 
 controlZoomOut : OrbitCamera -> OrbitCamera
 controlZoomOut camera =
-    { camera | orbitDistance = Quantity.multiplyBy (29.7 / 21) camera.orbitDistance }
+    { camera | distance = Quantity.multiplyBy (29.7 / 21) camera.distance }
 
 
 controlMouseDown : Mouse.Event -> RenderingModel -> RenderingModel
@@ -270,7 +270,7 @@ orbit dx dy camera =
     { focalPoint = camera.focalPoint
     , azimuth = Quantity.plus (Angle.degrees -dx) camera.azimuth
     , elevation = Quantity.clamp minElevation maxElevation (Quantity.plus (Angle.degrees dy) camera.elevation)
-    , orbitDistance = camera.orbitDistance
+    , distance = camera.distance
     }
 
 
@@ -278,22 +278,17 @@ pan : Float -> Float -> OrbitCamera -> OrbitCamera
 pan dx dy camera =
     let
         viewPoint =
-            Viewpoint3d.orbitZ
-                { focalPoint = camera.focalPoint
-                , azimuth = camera.azimuth
-                , elevation = camera.elevation
-                , distance = camera.orbitDistance
-                }
+            Viewpoint3d.orbitZ camera
 
         displacement =
             Vector3d.xyOn (Viewpoint3d.viewPlane viewPoint)
-                (Quantity.multiplyBy (-0.001 * dx) camera.orbitDistance)
-                (Quantity.multiplyBy (0.001 * dy) camera.orbitDistance)
+                (Quantity.multiplyBy (-0.001 * dx) camera.distance)
+                (Quantity.multiplyBy (0.001 * dy) camera.distance)
     in
     { focalPoint = Point3d.translateBy displacement camera.focalPoint
     , azimuth = camera.azimuth
     , elevation = camera.elevation
-    , orbitDistance = camera.orbitDistance
+    , distance = camera.distance
     }
 
 
@@ -437,18 +432,8 @@ modelViewProjection camera =
 persectiveCamera : OrbitCamera -> Camera3d Meters ()
 persectiveCamera camera =
     Camera3d.perspective
-        { viewpoint = viewpoint camera
+        { viewpoint = Viewpoint3d.orbitZ camera
         , verticalFieldOfView = Angle.degrees 30
-        }
-
-
-viewpoint : OrbitCamera -> Viewpoint3d Meters ()
-viewpoint camera =
-    Viewpoint3d.orbitZ
-        { focalPoint = camera.focalPoint
-        , azimuth = camera.azimuth
-        , elevation = camera.elevation
-        , distance = camera.orbitDistance
         }
 
 
