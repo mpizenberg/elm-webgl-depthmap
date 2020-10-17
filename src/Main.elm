@@ -152,7 +152,7 @@ loadTexture =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case ( msg, model ) of
-        ( ClickedSelectImageButton, Landing ) ->
+        ( ClickedSelectImageButton, _ ) ->
             ( Landing, File.Select.file [ "image/png" ] ImageLoaded )
 
         ( ImageLoaded file, Landing ) ->
@@ -328,7 +328,10 @@ view model =
 
         Rendering { depthMap, mesh, camera, lighting } ->
             Html.div []
-                [ lightControls lighting
+                [ Html.button
+                    [ HE.onClick ClickedSelectImageButton ]
+                    [ Html.text "Select a PNG image containing normals and depth" ]
+                , lightControls lighting
                 , WebGL.toHtml
                     [ width 800
                     , height 800
