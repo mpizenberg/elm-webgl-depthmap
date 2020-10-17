@@ -56,16 +56,14 @@ type alias RenderingModel =
 
 
 type alias Lighting =
-    { intensity : Float
-    , azimuth : Angle
+    { azimuth : Angle
     , elevation : Angle
     }
 
 
 initialLighting : Lighting
 initialLighting =
-    { intensity = 1
-    , azimuth = Quantity.zero
+    { azimuth = Quantity.zero
     , elevation = Angle.degrees 90
     }
 
@@ -137,7 +135,6 @@ type Msg
     | MouseMove ( Float, Float )
     | MouseUp
       -- Lighting
-    | ChangeLightIntensity Float
     | ChangeLightAzimuth Float
     | ChangeLightElevation Float
 
@@ -206,9 +203,6 @@ update msg model =
             ( Rendering { r | camera = controlMouseMove movement r.camera }, Cmd.none )
 
         -- Lighting
-        ( ChangeLightIntensity intensity, Rendering r ) ->
-            ( Rendering { r | lighting = changeLightIntensity intensity r.lighting }, Cmd.none )
-
         ( ChangeLightAzimuth az, Rendering r ) ->
             ( Rendering { r | lighting = changeLightAzimuth az r.lighting }, Cmd.none )
 
@@ -309,11 +303,6 @@ pan dx dy camera =
 -- Lighting
 
 
-changeLightIntensity : Float -> Lighting -> Lighting
-changeLightIntensity value lighting =
-    { lighting | intensity = value }
-
-
 changeLightAzimuth : Float -> Lighting -> Lighting
 changeLightAzimuth value lighting =
     { lighting | azimuth = Angle.degrees value }
@@ -367,30 +356,16 @@ view model =
 
 
 directionalLight : Lighting -> Vec3
-directionalLight { intensity, azimuth, elevation } =
+directionalLight { azimuth, elevation } =
     Direction3d.xyZ azimuth elevation
         |> Direction3d.components
-        |> (\( x, y, z ) -> vec3 (intensity * x) (intensity * y) (intensity * z))
+        |> (\( x, y, z ) -> vec3 x y z)
 
 
 lightControls : Lighting -> Html Msg
 lightControls lighting =
     Html.div []
-        [ Html.p [] [ Html.text "Light intensity" ]
-        , Html.div []
-            [ Html.text "0"
-            , Html.input
-                [ HA.type_ "range"
-                , HA.min "0"
-                , HA.max "1"
-                , HA.step "0.01"
-                , HA.value (String.fromFloat lighting.intensity)
-                , HE.stopPropagationOn "input" (valueDecoder ChangeLightIntensity)
-                ]
-                []
-            , Html.text "1"
-            ]
-        , Html.p [] [ Html.text "Light direction" ]
+        [ Html.p [] [ Html.text "Light direction" ]
         , Html.div []
             [ Html.text "Azimuth: 0"
             , Html.input
