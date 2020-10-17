@@ -50,7 +50,7 @@ type alias RenderingModel =
     , size : ( Int, Int )
     , mesh : Mesh Vertex
     , currentTime : Float
-    , camera : Camera
+    , camera : OrbitCamera
     , lighting : Lighting
     }
 
@@ -68,7 +68,7 @@ initialLighting =
     }
 
 
-type alias Camera =
+type alias OrbitCamera =
     { controlling : Controlling
     , focalPoint : Point3d Meters ()
     , azimuth : Angle
@@ -83,8 +83,8 @@ type Controlling
     | Panning
 
 
-initialCamera : ( Float, Float ) -> Camera
-initialCamera ( targetX, targetY ) =
+initialOrbitCamera : ( Float, Float ) -> OrbitCamera
+initialOrbitCamera ( targetX, targetY ) =
     { controlling = NoControl
     , focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
     , azimuth = Angle.degrees -90
@@ -175,7 +175,7 @@ update msg model =
                 , mesh = gridMesh w h
                 , size = ( w, h )
                 , currentTime = 0
-                , camera = initialCamera (centerTarget ( w, h ))
+                , camera = initialOrbitCamera (centerTarget ( w, h ))
                 , lighting = initialLighting
                 }
             , Cmd.none
@@ -217,17 +217,17 @@ update msg model =
 -- Camera
 
 
-controlZoomIn : Camera -> Camera
+controlZoomIn : OrbitCamera -> OrbitCamera
 controlZoomIn camera =
     { camera | orbitDistance = Quantity.multiplyBy (21 / 29.7) camera.orbitDistance }
 
 
-controlZoomOut : Camera -> Camera
+controlZoomOut : OrbitCamera -> OrbitCamera
 controlZoomOut camera =
     { camera | orbitDistance = Quantity.multiplyBy (29.7 / 21) camera.orbitDistance }
 
 
-controlMouseDown : Mouse.Event -> Camera -> Camera
+controlMouseDown : Mouse.Event -> OrbitCamera -> OrbitCamera
 controlMouseDown event camera =
     let
         controlling =
@@ -240,12 +240,12 @@ controlMouseDown event camera =
     { camera | controlling = controlling }
 
 
-controlMouseUp : Camera -> Camera
+controlMouseUp : OrbitCamera -> OrbitCamera
 controlMouseUp camera =
     { camera | controlling = NoControl }
 
 
-controlMouseMove : ( Float, Float ) -> Camera -> Camera
+controlMouseMove : ( Float, Float ) -> OrbitCamera -> OrbitCamera
 controlMouseMove ( dx, dy ) camera =
     case camera.controlling of
         NoControl ->
@@ -258,7 +258,7 @@ controlMouseMove ( dx, dy ) camera =
             pan dx dy camera
 
 
-orbit : Float -> Float -> Camera -> Camera
+orbit : Float -> Float -> OrbitCamera -> OrbitCamera
 orbit dx dy camera =
     let
         minElevation =
@@ -275,7 +275,7 @@ orbit dx dy camera =
     }
 
 
-pan : Float -> Float -> Camera -> Camera
+pan : Float -> Float -> OrbitCamera -> OrbitCamera
 pan dx dy camera =
     let
         viewPoint =
@@ -425,7 +425,7 @@ centerTarget ( w, h ) =
     ( 0.5 * toFloat w / maxSize, 0.5 * toFloat h / maxSize )
 
 
-modelViewProjection : Camera -> Mat4
+modelViewProjection : OrbitCamera -> Mat4
 modelViewProjection camera =
     WebGL.Matrices.modelViewProjectionMatrix
         Frame3d.atOrigin
@@ -436,7 +436,7 @@ modelViewProjection camera =
         }
 
 
-persectiveCamera : Camera -> Camera3d Meters ()
+persectiveCamera : OrbitCamera -> Camera3d Meters ()
 persectiveCamera camera =
     Camera3d.perspective
         { viewpoint = viewpoint camera
@@ -444,7 +444,7 @@ persectiveCamera camera =
         }
 
 
-viewpoint : Camera -> Viewpoint3d Meters ()
+viewpoint : OrbitCamera -> Viewpoint3d Meters ()
 viewpoint camera =
     Viewpoint3d.orbitZ
         { focalPoint = camera.focalPoint
