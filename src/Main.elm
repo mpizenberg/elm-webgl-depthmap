@@ -31,7 +31,7 @@ import WebGL.Texture as Texture exposing (Texture)
 main : Program Value Model Msg
 main =
     Browser.element
-        { init = \_ -> ( Landing, Cmd.none )
+        { init = \_ -> ( LoadingTexture, Task.attempt TextureLoaded (loadTexture "normals_and_depth.png") )
         , view = view
         , subscriptions = subscriptions
         , update = update
