@@ -50,6 +50,7 @@ type alias RenderingModel =
     , size : ( Int, Int )
     , mesh : Mesh Vertex
     , currentTime : Float
+    , controlling : CameraControl
     , camera : OrbitCamera
     , lighting : Lighting
     }
@@ -69,8 +70,7 @@ initialLighting =
 
 
 type alias OrbitCamera =
-    { controlling : CameraControl
-    , focalPoint : Point3d Meters ()
+    { focalPoint : Point3d Meters ()
     , azimuth : Angle
     , elevation : Angle
     , orbitDistance : Length
@@ -85,8 +85,7 @@ type CameraControl
 
 initialOrbitCamera : ( Float, Float ) -> OrbitCamera
 initialOrbitCamera ( targetX, targetY ) =
-    { controlling = NoControl
-    , focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
+    { focalPoint = Point3d.xyz (Length.meters targetX) (Length.meters targetY) Quantity.zero
     , azimuth = Angle.degrees -90
     , elevation = Viewpoint3d.isometricElevation
     , orbitDistance = Length.meters 3
@@ -101,7 +100,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     case model of
         Rendering r ->
-            case r.camera.controlling of
+            case r.controlling of
                 NoControl ->
                     onAnimationFrameDelta AnimationFrame
 
@@ -175,6 +174,7 @@ update msg model =
                 , mesh = gridMesh w h
                 , size = ( w, h )
                 , currentTime = 0
+                , controlling = NoControl
                 , camera = initialOrbitCamera (centerTarget ( w, h ))
                 , lighting = initialLighting
                 }
@@ -194,13 +194,13 @@ update msg model =
             ( Rendering { r | camera = controlZoomOut r.camera }, Cmd.none )
 
         ( MouseDown event, Rendering r ) ->
-            ( Rendering { r | camera = controlMouseDown event r.camera }, Cmd.none )
+            ( Rendering (controlMouseDown event r), Cmd.none )
 
         ( MouseUp, Rendering r ) ->
-            ( Rendering { r | camera = controlMouseUp r.camera }, Cmd.none )
+            ( Rendering (controlMouseUp r), Cmd.none )
 
         ( MouseMove movement, Rendering r ) ->
-            ( Rendering { r | camera = controlMouseMove movement r.camera }, Cmd.none )
+            ( Rendering { r | camera = controlMouseMove movement r.controlling r.camera }, Cmd.none )
 
         -- Lighting
         ( ChangeLightAzimuth az, Rendering r ) ->
@@ -227,8 +227,8 @@ controlZoomOut camera =
     { camera | orbitDistance = Quantity.multiplyBy (29.7 / 21) camera.orbitDistance }
 
 
-controlMouseDown : Mouse.Event -> OrbitCamera -> OrbitCamera
-controlMouseDown event camera =
+controlMouseDown : Mouse.Event -> RenderingModel -> RenderingModel
+controlMouseDown event rendering =
     let
         controlling =
             if event.keys.ctrl then
@@ -237,17 +237,17 @@ controlMouseDown event camera =
             else
                 Orbiting
     in
-    { camera | controlling = controlling }
+    { rendering | controlling = controlling }
 
 
-controlMouseUp : OrbitCamera -> OrbitCamera
-controlMouseUp camera =
-    { camera | controlling = NoControl }
+controlMouseUp : RenderingModel -> RenderingModel
+controlMouseUp rendering =
+    { rendering | controlling = NoControl }
 
 
-controlMouseMove : ( Float, Float ) -> OrbitCamera -> OrbitCamera
-controlMouseMove ( dx, dy ) camera =
-    case camera.controlling of
+controlMouseMove : ( Float, Float ) -> CameraControl -> OrbitCamera -> OrbitCamera
+controlMouseMove ( dx, dy ) controlling camera =
+    case controlling of
         NoControl ->
             camera
 
@@ -267,8 +267,7 @@ orbit dx dy camera =
         maxElevation =
             Angle.degrees 90
     in
-    { controlling = camera.controlling
-    , focalPoint = camera.focalPoint
+    { focalPoint = camera.focalPoint
     , azimuth = Quantity.plus (Angle.degrees -dx) camera.azimuth
     , elevation = Quantity.clamp minElevation maxElevation (Quantity.plus (Angle.degrees dy) camera.elevation)
     , orbitDistance = camera.orbitDistance
@@ -291,8 +290,7 @@ pan dx dy camera =
                 (Quantity.multiplyBy (-0.001 * dx) camera.orbitDistance)
                 (Quantity.multiplyBy (0.001 * dy) camera.orbitDistance)
     in
-    { controlling = camera.controlling
-    , focalPoint = Point3d.translateBy displacement camera.focalPoint
+    { focalPoint = Point3d.translateBy displacement camera.focalPoint
     , azimuth = camera.azimuth
     , elevation = camera.elevation
     , orbitDistance = camera.orbitDistance
