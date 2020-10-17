@@ -596,8 +596,8 @@ fragmentShader =
             float intensity = dot(normal, directionalLight);
 
             // gl_FragColor = vec4(vcolor, 1.0);
-            // gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
-            gl_FragColor = vec4(intensity * vcolor, 1.0);
+            // gl_FragColor = vec4(intensity * vcolor, 1.0);
+            gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
         }
 
     |]
