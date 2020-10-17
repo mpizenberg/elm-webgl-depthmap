@@ -1,0 +1,23 @@
+name: Build and deploy
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Elm
+        uses: justgook/setup-elm@1.2.0
+      - run: mkdir public
+      # - run: cp normals_and_depth.png public/
+      - run: elm make src/Main.elm --optimize --output=public/index.html
+
+      - name: Deploy app
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          force_orphan: true
