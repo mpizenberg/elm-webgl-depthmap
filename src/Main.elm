@@ -41,6 +41,7 @@ main =
 type Model
     = Landing
     | LoadingTexture
+    | TransferringTextureToWebGL
     | ErrorLoadingTexture Texture.Error
     | Rendering RenderingModel
 
@@ -162,7 +163,7 @@ update msg model =
             ( LoadingTexture, Task.perform UrlGenerated (File.toUrl file) )
 
         ( UrlGenerated url, LoadingTexture ) ->
-            ( LoadingTexture, Task.attempt TextureLoaded (loadTexture url) )
+            ( TransferringTextureToWebGL, Task.attempt TextureLoaded (loadTexture url) )
 
         ( TextureLoaded (Err err), _ ) ->
             ( ErrorLoadingTexture err, Cmd.none )
@@ -330,6 +331,9 @@ view model =
 
         LoadingTexture ->
             Html.text "Loading texture ..."
+
+        TransferringTextureToWebGL ->
+            Html.text "Transferring texture to WebGL ..."
 
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
