@@ -1,4 +1,4 @@
-module Main exposing (main)
+module MainBasic exposing (main)
 
 import Angle exposing (Angle)
 import Browser
@@ -49,6 +49,7 @@ type Model
 type alias RenderingModel =
     { depthMap : Texture
     , size : ( Int, Int )
+    , xyScale : Float
     , mesh : Mesh Vertex
     , currentTime : Float
     , controlling : CameraControl
@@ -175,9 +176,8 @@ update msg model =
             in
             ( Rendering
                 { depthMap = texture
-                , mesh = gridMesh w h
-
-                -- , mesh = gridMesh 10 8
+                , mesh = WebGL.indexedTriangles (meshVertices w h) (meshIndices w h)
+                , xyScale = min (1 / toFloat w) (1 / toFloat h)
                 , size = ( w, h )
                 , currentTime = 0
                 , controlling = NoControl
@@ -340,7 +340,7 @@ view model =
         ErrorLoadingTexture _ ->
             Html.text "X: An error occurred when loading texture"
 
-        Rendering { depthMap, mesh, camera, lighting, depthScale } ->
+        Rendering { depthMap, mesh, camera, lighting, depthScale, size, xyScale } ->
             Html.div []
                 [ Html.button
                     [ HE.onClick ClickedSelectImageButton ]
@@ -361,6 +361,9 @@ view model =
                         , directionalLight = directionalLight lighting
                         , texture = depthMap
                         , scale = depthScale
+                        , xyScale = xyScale
+                        , width = toFloat (Tuple.first size)
+                        , height = toFloat (Tuple.second size)
                         }
                     ]
                 ]
@@ -466,107 +469,72 @@ persectiveCamera camera =
 
 
 
--- Matrix
-
-
-type alias Matrix a =
-    List (List a)
-
-
-toTriangleStrip : Matrix a -> List a
-toTriangleStrip =
-    stripHelper []
-
-
-stripHelper : List a -> Matrix a -> List a
-stripHelper accum matrix =
-    case matrix of
-        currentLine :: nextLine :: followingLines ->
-            stripHelper (joinTerminatedStrip currentLine nextLine accum) (nextLine :: followingLines)
-
-        _ ->
-            accum
-
-
-joinTerminatedStrip : List a -> List a -> List a -> List a
-joinTerminatedStrip line1 line2 accum =
-    case ( line1, line2 ) of
-        -- Beginning of the strip, we double the first vertex
-        -- to cut from the previous strip with an empty triangle (not drawn)
-        ( x1 :: x1s, x2 :: x2s ) ->
-            terminatedStrip x1s x2s (x2 :: x1 :: x1 :: accum)
-
-        _ ->
-            accum
-
-
-terminatedStrip : List a -> List a -> List a -> List a
-terminatedStrip line1 line2 accum =
-    case ( line1, line2, accum ) of
-        -- Middle of the strip, just continue progressing.
-        ( x1 :: ((_ :: _) as x1s), x2 :: ((_ :: _) as x2s), _ ) ->
-            terminatedStrip x1s x2s (x2 :: x1 :: accum)
-
-        -- End of the strip, we double the last vertex
-        -- to cut from the next strip with an empty triangle (not drawn)
-        ( x1 :: _, x2 :: _, _ ) ->
-            x2 :: x2 :: x1 :: accum
-
-        _ ->
-            accum
-
-
-
 -- Mesh
 
 
 type alias Vertex =
-    { mapCoordinates : Vec2
-    , position : Vec2
+    { x : Float
+    , y : Float
     }
 
 
-gridMesh : Int -> Int -> Mesh Vertex
-gridMesh w h =
-    grid w h
-        |> List.map (List.map (toVertex w h))
-        |> toTriangleStrip
-        |> WebGL.triangleStrip
-
-
-grid : Int -> Int -> Matrix ( Int, Int )
-grid w h =
+meshVertices : Int -> Int -> List Vertex
+meshVertices width height =
     let
-        xs =
-            List.range 0 (w - 1)
+        -- We use (width-1) since elm List.range function
+        -- surprisingly includes the upper bound.
+        x_range =
+            List.range 0 (width - 1)
 
-        ys =
-            List.range 0 (h - 1)
+        -- Same for y_range.
+        y_range =
+            List.range 0 (height - 1)
+
+        makeRow : Int -> List Vertex
+        makeRow y =
+            List.map (\x -> Vertex (toFloat x) (toFloat y)) x_range
     in
-    List.map (\x -> List.map (\y -> ( x, y )) ys) xs
+    -- Using y for the outer loop
+    -- and x for the inner loop since we are row-major
+    List.concatMap makeRow y_range
 
 
-toVertex : Int -> Int -> ( Int, Int ) -> Vertex
-toVertex w h ( u, v ) =
+meshIndices : Int -> Int -> List ( Int, Int, Int )
+meshIndices width height =
     let
-        x =
-            toFloat u
+        -- Stop x_range at (width-2) since the last vertex of the row
+        -- is already in the triangle of the previous vertex.
+        x_range =
+            List.range 0 (width - 2)
 
-        y =
-            toFloat v
+        -- Same for y_range.
+        y_range =
+            List.range 0 (height - 2)
 
-        widthScale =
-            1.0 / toFloat w
+        -- Generate the two triplets of indices for the two triangles
+        -- sharing the same (x,y) top-left corner.
+        trianglePairAt : Int -> Int -> List ( Int, Int, Int )
+        trianglePairAt x y =
+            let
+                -- Convert a (x,y) subscript into its corresponding index
+                -- when following the "row-major" order.
+                topLeft =
+                    width * y + x
+            in
+            -- ABG is (0, 1, 6)
+            [ ( topLeft, topLeft + 1, topLeft + 1 + width )
 
-        heightScale =
-            1.0 / toFloat h
+            -- AGF is (0, 6, 5)
+            , ( topLeft, topLeft + 1 + width, topLeft + width )
+            ]
 
-        scaleCoef =
-            min widthScale heightScale
+        makeRow : Int -> List ( Int, Int, Int )
+        makeRow y =
+            List.concatMap (\x -> trianglePairAt x y) x_range
     in
-    { mapCoordinates = vec2 (widthScale * x) (heightScale * y)
-    , position = vec2 (scaleCoef * x) (scaleCoef * y)
-    }
+    -- Using y for the outer loop
+    -- and x for the inner loop since we are row-major
+    List.concatMap makeRow y_range
 
 
 
@@ -578,6 +546,9 @@ type alias Uniforms =
     , directionalLight : Vec3
     , texture : Texture
     , scale : Float
+    , xyScale : Float
+    , width : Float
+    , height : Float
     }
 
 
@@ -585,24 +556,30 @@ vertexShader : Shader Vertex Uniforms { vcolor : Vec3, vnormal : Vec3 }
 vertexShader =
     [glsl|
 
-        attribute vec2 mapCoordinates;
-        attribute vec2 position;
+        attribute float x;
+        attribute float y;
+        uniform float width;
+        uniform float height;
+        uniform float xyScale;
+        uniform float scale;
         uniform mat4 modelViewProjection;
         uniform sampler2D texture;
-        uniform float scale;
         varying vec3 vcolor;
         varying vec3 vnormal;
 
         void main () {
-            vec4 tex = texture2D(texture, mapCoordinates);
+            float textureX = x / (width - 1.0);
+            float textureY = y / (height - 1.0);
+            vec4 tex = texture2D(texture, vec2(textureX, textureY));
+
             float nx = 2.0 * tex.x - 1.0;
             float ny = 2.0 * tex.y - 1.0;
             float nz = 2.0 * tex.z - 1.0;
             vnormal = vec3(nx, ny, nz);
-            vcolor = vec3(position, 0);
-            gl_Position = modelViewProjection * vec4(position, -tex.w * scale - 0.01, 1.0);
+            vcolor = tex.xyz;
+            vec3 worldCoordinates = vec3(xyScale * x, xyScale * y, -tex.w * scale);
+            gl_Position = modelViewProjection * vec4(worldCoordinates, 1.0);
         }
-
     |]
 
 
